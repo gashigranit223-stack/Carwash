@@ -761,7 +761,7 @@ export default function App() {
             <div style={{ color: "#546e7a", fontSize: 12 }}>{t.jam_pronari_pershkrim}</div>
           </div>
         </div>
-        <p style={{ color: "#1e2535", fontSize: 11, marginTop: 28 }}>{t.ruhen}</p>
+        <p style={{ color: "#ffffff", fontSize: 11, marginTop: 28 }}>{t.ruhen}</p>
       </div>
     </div>
   );
