@@ -129,6 +129,25 @@ function useGjendja() {
     const { data, error } = await supabase.from("rezervimet").insert([{ ...rez, statusi: "konfirmuar" }]).select();
     if (error) { console.error(error); return false; }
     setRezervimet(prev => [data[0], ...prev]);
+
+    // Stuur bevestigingsmail via Resend
+    if (rez.email) {
+      const sh = SHERBIMET.find(s => s.id === rez.sherbim);
+      try {
+        await fetch("/api/stuur-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            naam: rez.name,
+            email: rez.email,
+            sherbim: sh?.name,
+            data: rez.data,
+            ora: rez.ora
+          })
+        });
+      } catch (e) { console.error("Email fout:", e); }
+    }
+
     if (rez.email) {
       const ekz = klientet.find(k => k.email === rez.email);
       if (ekz) {
@@ -188,6 +207,7 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
         <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
         <h2 style={{ margin: "0 0 10px", color: "#0d47a1" }}>Rezervimi u konfirmua!</h2>
         <p style={{ color: "#546e7a", marginBottom: 16 }}>Faleminderit, <strong>{zgj.name}</strong>! Takimi juaj për <strong>{sherb?.name}</strong> më <strong>{formatData(zgj.data)}</strong> në orën <strong>{zgj.ora}</strong> është regjistruar.</p>
+        <p style={{ fontSize: 13, color: "#90a4ae", marginBottom: 16 }}>📧 Një email konfirmimi u dërgua te {zgj.email}</p>
         <div style={{ padding: "10px 14px", background: "#f0f7ff", borderRadius: 8, fontSize: 12, color: "#546e7a", marginBottom: 20 }}>🏢 <strong>Carwash Granit</strong> — Pronar: Granit</div>
         <button onClick={() => { setPerfunduar(false); setHapi(1); setZgj({ sherbim: null, data: null, ora: null, name: "", email: "", phone: "", shenime: "" }); }} style={{ background: "#1976d2", color: "#fff", border: "none", borderRadius: 10, padding: "12px 28px", cursor: "pointer", fontWeight: 700, fontSize: 15 }}>Rezervim i Ri</button>
       </div>
