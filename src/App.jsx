@@ -4,9 +4,6 @@ import { supabase } from "./supabase";
 const ADMIN_USERNAME = "admin";
 const ADMIN_PASSWORD = "Laptop12.3!#";
 
-const ADMIN_USERNAME = "admin";
-const ADMIN_PASSWORD = "Laptop12.3!#";
-
 const SHERBIMET = [
   { id: 1, name: "Larje Bazë", duration: 30, price: 15, icon: "🚿", desc: "Larje e jashtme + tharje me ajër" },
   { id: 2, name: "Larje Deluxe", duration: 45, price: 25, icon: "✨", desc: "Larje e jashtme + fshirje brendësi" },
