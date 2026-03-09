@@ -638,5 +638,7 @@ export default function App() {
         <p style={{ color: "#1e2535", fontSize: 11, marginTop: 28 }}>Rezervimet sinkronizohen në kohë reale midis të dy portaleve</p>
       </div>
     </div>
-  );
+  ); 
 }
+
+@
