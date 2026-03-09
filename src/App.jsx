@@ -1,4 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+// ─── SUPABASE VERBINDING ─────────────────────────────────────────────────────
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const SHERBIMET = [
   { id: 1, name: "Larje Bazë", duration: 30, price: 15, icon: "🚿", desc: "Larje e jashtme + tharje me ajër" },
@@ -32,12 +39,6 @@ function get14Ditet() {
   return ditet;
 }
 
-const REZERVIMET_FILLESTARE = [
-  { id: 1, name: "Arben Krasniqi", email: "arben@email.al", phone: "069-123-4567", sherbim: 1, data: sotDite(), ora: "09:00", statusi: "konfirmuar", shenime: "" },
-  { id: 2, name: "Fjolla Berisha", email: "fjolla@email.al", phone: "068-987-6543", sherbim: 3, data: sotDite(), ora: "10:30", statusi: "konfirmuar", shenime: "Tesla e zezë" },
-  { id: 3, name: "Driton Hoxha", email: "driton@email.al", phone: "067-111-2233", sherbim: 2, data: sotDite(), ora: "14:00", statusi: "pritje", shenime: "" },
-];
-
 const SABLLONET_EMAIL = [
   { id: 1, name: "Konfirmim Rezervimi", subjekti: "Takimi juaj është konfirmuar ✓", teksti: "I/E dashur {{emri}},\n\nTakimi juaj për {{sherbim}} më {{data}} në orën {{ora}} është konfirmuar.\n\nNë pritje tuaj!\n\nMe respekt,\nCarwash Granit\nPronar: Granit" },
   { id: 2, name: "Kujtesë (1 ditë)", subjekti: "Kujtesë: nesër larja juaj 🚗", teksti: "I/E dashur {{emri}},\n\nJu kujtojmë me respekt se nesër në orën {{ora}} keni takim për {{sherbim}}.\n\nDeri nesër!\n\nMe respekt,\nCarwash Granit\nPronar: Granit" },
@@ -48,58 +49,107 @@ const SABLLONET_EMAIL = [
 const statusNgjyra = (s) => ({ konfirmuar: "#4CAF50", pritje: "#FF9800", perfunduar: "#2196F3", anuluar: "#9E9E9E" }[s] || "#9E9E9E");
 const statusEtiketa = (s) => ({ konfirmuar: "Konfirmuar", pritje: "Në Pritje", perfunduar: "Përfunduar", anuluar: "Anuluar" }[s] || s);
 
-function useGjendjaEPerbashket() {
-  const [rezervimet, setRezervimet] = useState(REZERVIMET_FILLESTARE);
-  const [klientet, setKlientet] = useState([
-    { id: 1, name: "Arben Krasniqi", email: "arben@email.al", phone: "069-123-4567", vizita: 4, abonuar: true },
-    { id: 2, name: "Fjolla Berisha", email: "fjolla@email.al", phone: "068-987-6543", vizita: 2, abonuar: true },
-    { id: 3, name: "Driton Hoxha", email: "driton@email.al", phone: "067-111-2233", vizita: 1, abonuar: false },
-  ]);
-
-  const oraEZene = (data, ora) => rezervimet.some(r => r.data === data && r.ora === ora && r.statusi !== "anuluar");
-
-  const shtoRezervim = (rezervim) => {
-    if (oraEZene(rezervim.data, rezervim.ora)) return false;
-    const r = { ...rezervim, id: Date.now(), statusi: "konfirmuar" };
-    setRezervimet(prev => [...prev, r]);
-    setKlientet(prev => {
-      const ekz = prev.find(k => k.email === rezervim.email);
-      if (ekz) return prev.map(k => k.email === rezervim.email ? { ...k, vizita: k.vizita + 1 } : k);
-      if (rezervim.email) return [...prev, { id: Date.now(), name: rezervim.name, email: rezervim.email, phone: rezervim.phone, vizita: 1, abonuar: true }];
-      return prev;
-    });
-    return true;
-  };
-
-  const perditesoCtatusin = (id, statusi) => setRezervimet(prev => prev.map(r => r.id === id ? { ...r, statusi } : r));
-  const fshiRezervimin = (id) => setRezervimet(prev => prev.filter(r => r.id !== id));
-
-  return { rezervimet, klientet, setKlientet, oraEZene, shtoRezervim, perditesoCtatusin, fshiRezervimin };
-}
-
 function Njoftim({ msg, lloji }) {
   const bg = { gabim: "#b71c1c", kujdes: "#e65100", sukses: "#1b5e20" }[lloji] || "#1b5e20";
   return <div style={{ position: "fixed", top: 20, right: 20, zIndex: 9999, background: bg, color: "#fff", padding: "12px 22px", borderRadius: 10, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.5)", fontSize: 14, maxWidth: 320 }}>{msg}</div>;
 }
 
+// ─── SHARED STATE MET SUPABASE ───────────────────────────────────────────────
+function useGjendjaEPerbashket() {
+  const [rezervimet, setRezervimet] = useState([]);
+  const [klientet, setKlientet] = useState([]);
+  const [duke_ngarkuar, setDukeNgarkuar] = useState(true);
+
+  // Ngarko rezervimet nga Supabase
+  useEffect(() => {
+    ngarkoRezervimet();
+    ngarkoKlientet();
+  }, []);
+
+  const ngarkoRezervimet = async () => {
+    setDukeNgarkuar(true);
+    const { data, error } = await supabase
+      .from("rezervimet")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data) setRezervimet(data);
+    setDukeNgarkuar(false);
+  };
+
+  const ngarkoKlientet = async () => {
+    const { data, error } = await supabase
+      .from("klientet")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error && data) setKlientet(data);
+  };
+
+  const oraEZene = (data, ora) =>
+    rezervimet.some(r => r.data === data && r.ora === ora && r.statusi !== "anuluar");
+
+  const shtoRezervim = async (rezervim) => {
+    if (oraEZene(rezervim.data, rezervim.ora)) return false;
+
+    const { data, error } = await supabase
+      .from("rezervimet")
+      .insert([{ ...rezervim, statusi: "konfirmuar" }])
+      .select();
+
+    if (error) return false;
+    setRezervimet(prev => [data[0], ...prev]);
+
+    // Shto ose perditeso klientin
+    if (rezervim.email) {
+      const ekz = klientet.find(k => k.email === rezervim.email);
+      if (ekz) {
+        await supabase.from("klientet").update({ vizita: ekz.vizita + 1 }).eq("email", rezervim.email);
+        setKlientet(prev => prev.map(k => k.email === rezervim.email ? { ...k, vizita: k.vizita + 1 } : k));
+      } else {
+        const { data: kd } = await supabase.from("klientet").insert([{ name: rezervim.name, email: rezervim.email, phone: rezervim.phone, vizita: 1, abonuar: true }]).select();
+        if (kd) setKlientet(prev => [kd[0], ...prev]);
+      }
+    }
+    return true;
+  };
+
+  const perditesoCtatusin = async (id, statusi) => {
+    await supabase.from("rezervimet").update({ statusi }).eq("id", id);
+    setRezervimet(prev => prev.map(r => r.id === id ? { ...r, statusi } : r));
+  };
+
+  const fshiRezervimin = async (id) => {
+    await supabase.from("rezervimet").delete().eq("id", id);
+    setRezervimet(prev => prev.filter(r => r.id !== id));
+  };
+
+  const perditesaKlientin = async (id, ndryshimet) => {
+    await supabase.from("klientet").update(ndryshimet).eq("id", id);
+    setKlientet(prev => prev.map(k => k.id === id ? { ...k, ...ndryshimet } : k));
+  };
+
+  return { rezervimet, klientet, setKlientet, oraEZene, shtoRezervim, perditesoCtatusin, fshiRezervimin, perditesaKlientin, duke_ngarkuar, rifresko: ngarkoRezervimet };
+}
+
 // ═══════════════════════════════════════════════
 // PORTALI I KLIENTIT
 // ═══════════════════════════════════════════════
-
 function PortaliKlientit({ oraEZene, shtoRezervim }) {
   const [hapi, setHapi] = useState(1);
   const [zgj, setZgj] = useState({ sherbim: null, data: null, ora: null, name: "", email: "", phone: "", shenime: "" });
   const [njoftim, setNjoftim] = useState(null);
   const [perfunduar, setPerfunduar] = useState(false);
+  const [duke_derguar, setDukeDerguar] = useState(false);
   const ditet = get14Ditet();
 
   const tregoProblem = (msg, lloji = "sukses") => { setNjoftim({ msg, lloji }); setTimeout(() => setNjoftim(null), 3500); };
   const sherb = SHERBIMET.find(s => s.id === zgj.sherbim);
 
-  const dergoje = () => {
+  const dergoje = async () => {
     if (!zgj.name.trim()) return tregoProblem("Ju lutemi shkruani emrin tuaj.", "gabim");
     if (!zgj.email.trim()) return tregoProblem("Ju lutemi shkruani email-in tuaj.", "gabim");
-    const ok = shtoRezervim({ name: zgj.name, email: zgj.email, phone: zgj.phone, sherbim: zgj.sherbim, data: zgj.data, ora: zgj.ora, shenime: zgj.shenime });
+    setDukeDerguar(true);
+    const ok = await shtoRezervim({ name: zgj.name, email: zgj.email, phone: zgj.phone, sherbim: zgj.sherbim, data: zgj.data, ora: zgj.ora, shenime: zgj.shenime });
+    setDukeDerguar(false);
     if (!ok) return tregoProblem("Kjo orë është zënë tani. Zgjidhni një orë tjetër.", "gabim");
     setPerfunduar(true);
   };
@@ -124,18 +174,15 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #e3f2fd 0%, #f0f4ff 100%)", fontFamily: "'Segoe UI', sans-serif" }}>
       {njoftim && <Njoftim {...njoftim} />}
-
       <div style={{ background: "#fff", borderBottom: "1px solid #e3eaf5", padding: "16px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg, #1976d2, #42a5f5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🚗</div>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 20, color: "#0d47a1", letterSpacing: -0.5 }}>Carwash Granit</div>
+            <div style={{ fontWeight: 900, fontSize: 20, color: "#0d47a1" }}>Carwash Granit</div>
             <div style={{ fontSize: 11, color: "#90a4ae", letterSpacing: 1 }}>REZERVO ONLINE</div>
           </div>
         </div>
-        <div style={{ fontSize: 12, color: "#78909c", background: "#f0f4ff", padding: "6px 14px", borderRadius: 20, fontWeight: 600 }}>
-          👤 Pronar: Granit
-        </div>
+        <div style={{ fontSize: 12, color: "#78909c", background: "#f0f4ff", padding: "6px 14px", borderRadius: 20, fontWeight: 600 }}>👤 Pronar: Granit</div>
       </div>
 
       <div style={{ background: "#fff", borderBottom: "1px solid #e3eaf5", padding: "12px 32px", display: "flex", gap: 6, alignItems: "center", overflowX: "auto" }}>
@@ -152,14 +199,13 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
       </div>
 
       <div style={{ maxWidth: 680, margin: "0 auto", padding: "32px 20px" }}>
-
         {hapi === 1 && (
           <div>
             <h2 style={{ color: "#0d47a1", margin: "0 0 6px" }}>Zgjidhni shërbimin</h2>
             <p style={{ color: "#78909c", marginBottom: 24 }}>Zgjidhni trajtimin që dëshironi</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               {SHERBIMET.map(s => (
-                <div key={s.id} onClick={() => { setZgj({ ...zgj, sherbim: s.id }); setHapi(2); }} style={{ background: "#fff", border: "2px solid #e3eaf5", borderRadius: 16, padding: 20, cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", transition: "border-color 0.15s" }}
+                <div key={s.id} onClick={() => { setZgj({ ...zgj, sherbim: s.id }); setHapi(2); }} style={{ background: "#fff", border: "2px solid #e3eaf5", borderRadius: 16, padding: 20, cursor: "pointer", boxShadow: "0 2px 12px rgba(0,0,0,0.06)" }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = "#1976d2"}
                   onMouseLeave={e => e.currentTarget.style.borderColor = "#e3eaf5"}>
                   <div style={{ fontSize: 32, marginBottom: 10 }}>{s.icon}</div>
@@ -239,7 +285,7 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
           <div>
             <button onClick={() => setHapi(4)} style={{ background: "none", border: "none", color: "#1976d2", cursor: "pointer", fontWeight: 600, marginBottom: 16, padding: 0, fontSize: 14 }}>← Kthehu</button>
             <h2 style={{ color: "#0d47a1", margin: "0 0 6px" }}>Kontrolloni rezervimin</h2>
-            <p style={{ color: "#78909c", marginBottom: 24 }}>A është gjithçka në rregull? Konfirmoni më poshtë.</p>
+            <p style={{ color: "#78909c", marginBottom: 24 }}>A është gjithçka në rregull?</p>
             <div style={{ background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 2px 16px rgba(0,0,0,0.06)", marginBottom: 16 }}>
               {[["Shërbimi", `${sherb?.icon} ${sherb?.name}`], ["Data", formatData(zgj.data)], ["Ora", zgj.ora], ["Kohëzgjatja", `${sherb?.duration} min`], ["Çmimi", `€${sherb?.price}`], ["Emri", zgj.name], ["Email", zgj.email], ["Telefoni", zgj.phone || "—"], ["Shënime", zgj.shenime || "—"]].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f0f4ff", fontSize: 14 }}>
@@ -251,8 +297,8 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
                 🏢 <strong>Carwash Granit</strong> — Pronar: Granit
               </div>
             </div>
-            <button onClick={dergoje} style={{ width: "100%", background: "linear-gradient(135deg, #1976d2, #42a5f5)", color: "#fff", border: "none", borderRadius: 12, padding: "15px", cursor: "pointer", fontWeight: 800, fontSize: 16, boxShadow: "0 4px 16px rgba(25,118,210,0.35)" }}>
-              🚗 Konfirmo Rezervimin
+            <button onClick={dergoje} disabled={duke_derguar} style={{ width: "100%", background: duke_derguar ? "#90a4ae" : "linear-gradient(135deg, #1976d2, #42a5f5)", color: "#fff", border: "none", borderRadius: 12, padding: "15px", cursor: duke_derguar ? "not-allowed" : "pointer", fontWeight: 800, fontSize: 16, boxShadow: "0 4px 16px rgba(25,118,210,0.35)" }}>
+              {duke_derguar ? "⏳ Duke ruajtur..." : "🚗 Konfirmo Rezervimin"}
             </button>
           </div>
         )}
@@ -264,8 +310,7 @@ function PortaliKlientit({ oraEZene, shtoRezervim }) {
 // ═══════════════════════════════════════════════
 // PORTALI I PRONARIT
 // ═══════════════════════════════════════════════
-
-function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perditesoCtatusin, fshiRezervimin, oraEZene }) {
+function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perditesoCtatusin, fshiRezervimin, oraEZene, perditesaKlientin, duke_ngarkuar, rifresko }) {
   const [skeda, setSkeda] = useState("paneli");
   const [rezervimiZgjedhur, setRezervimiZgjedhur] = useState(null);
   const [shfaqFormen, setShfaqFormen] = useState(false);
@@ -273,7 +318,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
   const [skedaEmail, setSkedaEmail] = useState("shkruaj");
   const [sablloniZgjedhur, setSablloniZgjedhur] = useState(0);
   const [marresit, setMarresit] = useState("te_gjithe");
-  const [emailetDerguara, setEmailetDerguara] = useState([{ id: 1, subjekti: "Konfirmim Rezervimi", marresit: 2, data: sotDite(), hapur: 2 }]);
+  const [emailetDerguara, setEmailetDerguara] = useState([]);
   const [njoftim, setNjoftim] = useState(null);
 
   const tregoProblem = (msg, lloji = "sukses") => { setNjoftim({ msg, lloji }); setTimeout(() => setNjoftim(null), 3000); };
@@ -285,10 +330,11 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
     pritje: rezervimet.filter(r => r.statusi === "pritje").length,
   };
 
-  const shtoRezervimAdmin = () => {
+  const shtoRezervimAdmin = async () => {
     if (!rezervimRi.name || !rezervimRi.data) return tregoProblem("Ju lutemi plotësoni emrin dhe datën.", "gabim");
     if (oraEZene(rezervimRi.data, rezervimRi.ora)) return tregoProblem("Kjo orë është tashmë e zënë!", "gabim");
-    shtoRezervim(rezervimRi);
+    const ok = await shtoRezervim(rezervimRi);
+    if (!ok) return tregoProblem("Gabim gjatë ruajtjes.", "gabim");
     setShfaqFormen(false);
     setRezervimRi({ name: "", email: "", phone: "", sherbim: 1, data: "", ora: "09:00", shenime: "" });
     tregoProblem("Rezervimi u shtua!");
@@ -311,7 +357,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginRight: "auto" }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #29b6f6, #0288d1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>🔧</div>
           <div>
-            <div style={{ fontWeight: 900, fontSize: 15, letterSpacing: -0.3 }}>Carwash Granit</div>
+            <div style={{ fontWeight: 900, fontSize: 15 }}>Carwash Granit</div>
             <div style={{ fontSize: 9, color: "#29b6f6", letterSpacing: 1, fontWeight: 600 }}>PRONAR: GRANIT</div>
           </div>
         </div>
@@ -320,18 +366,25 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
             {t.icon} {t.label}
           </button>
         ))}
+        <button onClick={rifresko} style={{ background: "#252a3a", border: "1px solid #29b6f633", color: "#29b6f6", borderRadius: 7, padding: "5px 11px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🔄 Rifresko</button>
       </div>
 
       <div style={{ flex: 1, padding: 22, overflowY: "auto" }}>
 
-        {skeda === "paneli" && (
+        {duke_ngarkuar && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200 }}>
+            <div style={{ color: "#546e7a", fontSize: 14 }}>⏳ Duke ngarkuar të dhënat...</div>
+          </div>
+        )}
+
+        {!duke_ngarkuar && skeda === "paneli" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>Mirësevini, Granit! 👋</h2>
               <div style={{ fontSize: 12, color: "#546e7a", background: "#1a1f2e", border: "1px solid #252a3a", padding: "6px 14px", borderRadius: 20 }}>🏢 Pronar: Granit</div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 22 }}>
-              {[{ label: "Sot", value: statistikat.sot, icon: "📅", color: "#29b6f6" }, { label: "Totali i rezervimeve", value: statistikat.total, icon: "🗓️", color: "#66bb6a" }, { label: "Të ardhura (përfunduar)", value: `€${statistikat.te_ardhura}`, icon: "💶", color: "#ffa726" }, { label: "Në pritje", value: statistikat.pritje, icon: "⏳", color: "#ef5350" }].map((s, i) => (
+              {[{ label: "Sot", value: statistikat.sot, icon: "📅", color: "#29b6f6" }, { label: "Totali", value: statistikat.total, icon: "🗓️", color: "#66bb6a" }, { label: "Të ardhura", value: `€${statistikat.te_ardhura}`, icon: "💶", color: "#ffa726" }, { label: "Në pritje", value: statistikat.pritje, icon: "⏳", color: "#ef5350" }].map((s, i) => (
                 <div key={i} style={{ background: "#1a1f2e", border: "1px solid #252a3a", borderRadius: 12, padding: 16 }}>
                   <div style={{ fontSize: 22, marginBottom: 6 }}>{s.icon}</div>
                   <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -370,7 +423,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
           </div>
         )}
 
-        {skeda === "planifikimi" && (
+        {!duke_ngarkuar && skeda === "planifikimi" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>📅 Planifikimi Javor</h2>
@@ -406,7 +459,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
           </div>
         )}
 
-        {skeda === "rezervimet" && (
+        {!duke_ngarkuar && skeda === "rezervimet" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>📋 Të gjitha rezervimet ({rezervimet.length})</h2>
@@ -439,7 +492,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
           </div>
         )}
 
-        {skeda === "klientet" && (
+        {!duke_ngarkuar && skeda === "klientet" && (
           <div>
             <h2 style={{ margin: "0 0 16px", fontSize: 19, fontWeight: 800 }}>👥 Klientët ({klientet.length})</h2>
             <div style={{ background: "#1a1f2e", border: "1px solid #252a3a", borderRadius: 12, overflowX: "auto" }}>
@@ -455,10 +508,10 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
                           {k.vizita >= 4 && <span style={{ background: "#ffa72622", color: "#ffa726", borderRadius: 5, padding: "1px 5px", fontSize: 9, fontWeight: 700 }}>VIP</span>}
                         </div>
                       </td>
-                      <td style={{ padding: "10px 14px" }}><div style={{ fontSize: 12 }}>{k.email}</div><div style={{ fontSize: 10, color: "#546e7a" }}>{k.phone}</div></td>
+                      <td style={{ padding: "10px 14px" }}><div>{k.email}</div><div style={{ fontSize: 10, color: "#546e7a" }}>{k.phone}</div></td>
                       <td style={{ padding: "10px 14px", fontWeight: 700 }}>{k.vizita}×</td>
                       <td style={{ padding: "10px 14px" }}>
-                        <button onClick={() => setKlientet(klientet.map(x => x.id === k.id ? { ...x, abonuar: !x.abonuar } : x))} style={{ background: k.abonuar ? "#4CAF5022" : "#ef535022", color: k.abonuar ? "#4CAF50" : "#ef5350", border: `1px solid ${k.abonuar ? "#4CAF5044" : "#ef535044"}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
+                        <button onClick={() => perditesaKlientin(k.id, { abonuar: !k.abonuar })} style={{ background: k.abonuar ? "#4CAF5022" : "#ef535022", color: k.abonuar ? "#4CAF50" : "#ef5350", border: `1px solid ${k.abonuar ? "#4CAF5044" : "#ef535044"}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>
                           {k.abonuar ? "✓ I abonuar" : "✕ I çabonuar"}
                         </button>
                       </td>
@@ -470,7 +523,7 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
           </div>
         )}
 
-        {skeda === "marketing" && (
+        {!duke_ngarkuar && skeda === "marketing" && (
           <div>
             <h2 style={{ margin: "0 0 16px", fontSize: 19, fontWeight: 800 }}>📧 Marketing me Email</h2>
             <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -515,19 +568,23 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
             )}
             {skedaEmail === "historia" && (
               <div style={{ background: "#1a1f2e", border: "1px solid #252a3a", borderRadius: 12, overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead><tr style={{ background: "#141824" }}>{["Subjekti","Data","Marrësit","Hapjet"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#546e7a", fontWeight: 600, fontSize: 10 }}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {emailetDerguara.map(e => (
-                      <tr key={e.id} style={{ borderTop: "1px solid #1e2332" }}>
-                        <td style={{ padding: "12px 14px", fontWeight: 600 }}>{e.subjekti}</td>
-                        <td style={{ padding: "12px 14px", color: "#b0bec5" }}>{e.data}</td>
-                        <td style={{ padding: "12px 14px" }}>{e.marresit}</td>
-                        <td style={{ padding: "12px 14px" }}><span style={{ color: "#29b6f6", fontWeight: 700 }}>{e.marresit ? Math.round((e.hapur/e.marresit)*100) : 0}%</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {emailetDerguara.length === 0 ? (
+                  <div style={{ padding: 28, textAlign: "center", color: "#546e7a", fontSize: 13 }}>Asnjë email i dërguar ende</div>
+                ) : (
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead><tr style={{ background: "#141824" }}>{["Subjekti","Data","Marrësit","Hapjet"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#546e7a", fontWeight: 600, fontSize: 10 }}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {emailetDerguara.map(e => (
+                        <tr key={e.id} style={{ borderTop: "1px solid #1e2332" }}>
+                          <td style={{ padding: "12px 14px", fontWeight: 600 }}>{e.subjekti}</td>
+                          <td style={{ padding: "12px 14px", color: "#b0bec5" }}>{e.data}</td>
+                          <td style={{ padding: "12px 14px" }}>{e.marresit}</td>
+                          <td style={{ padding: "12px 14px" }}><span style={{ color: "#29b6f6", fontWeight: 700 }}>{e.marresit ? Math.round((e.hapur/e.marresit)*100) : 0}%</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             )}
           </div>
@@ -589,7 +646,6 @@ function PortaliPronarit({ rezervimet, klientet, setKlientet, shtoRezervim, perd
 // ═══════════════════════════════════════════════
 // FAQJA KRYESORE
 // ═══════════════════════════════════════════════
-
 export default function App() {
   const [pamja, setPamja] = useState("kryesore");
   const gjendja = useGjendjaEPerbashket();
@@ -635,10 +691,8 @@ export default function App() {
             <div style={{ color: "#546e7a", fontSize: 12 }}>Granit — Menaxhoni rezervimet, klientët & marketingun</div>
           </div>
         </div>
-        <p style={{ color: "#1e2535", fontSize: 11, marginTop: 28 }}>Rezervimet sinkronizohen në kohë reale midis të dy portaleve</p>
+        <p style={{ color: "#1e2535", fontSize: 11, marginTop: 28 }}>Rezervimet ruhen automatikisht në databazë</p>
       </div>
     </div>
-  ); 
+  );
 }
-
-@
